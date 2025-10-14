@@ -1,22 +1,39 @@
+PYTH_UNICHAIN := "0x2880aB155794e7179c9eE2e38200202908C17B43"
+
 default:
     @just --list
 
 # spin up anvil
 anvil-fork:
-    anvil --fork-url $INFURA_ETHEREUM_MAINNET_RPC
+    anvil --fork-url $INFURA_UNICHAIN_MAINNET_RPC
 
 # deploy the example smart contract
 deploy:
-    forge script script/deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+    forge script script/deploy.s.sol --rpc-url $INFURA_UNICHAIN_MAINNET_RPC --broadcast --account burner
+    
+get-update-fee bytes addr=PYTH_UNICHAIN:
+    cast call {{addr}} \
+        "getUpdateFee(bytes[])" \
+        {{bytes}} \
+        --rpc-url $INFURA_UNICHAIN_MAINNET_RPC
 
-update-price addr="0x2d493cde51adc74D4494b3dC146759cF32957A23":
+update-price addr:
     cast send {{addr}} \
-      "exampleMethod(bytes[])" \
-        "0x504e41550100000003b801000000040d0001c60a6d07e7c4c3ac7e427ed6790cd4f9a38f5d4eceece6bdff6e0fafaac1783441f2493eab5dd726f6510d9d42c5d85b423f79705a906107a26f374bd28d62000278f5ad75d24c8fe6dbf00f9fb33642684115e660b0f2cd2e7403823dd088304f7485ec9cdb6b2709e28e8910db674e449d6ad527b4551e88bbdac4c77a0c5ffc01033580929b2ff7297bfddafea2bb6cd4e5b6ef51d0825f477dba6e31fe1b463ddc0c5c8213e96c95d394656f4203c127bef31a472c50f27da5eb5730baa2d2a47700044e9dd1e6816df1dfdd047ed5e3931bbc0facc607c1a9a09d51e94d8741c707be71f7875ac0cd001e7fe09952a7d7d9e3bcac86807e0ccd7b12a7746018b495d4000602b5fb4b0b05d1cbe010705520f5ff2938581351030577a39cd736eda60d6bc0501eec066a1e075c3b51a49c91b7857e6940534c17b0176b1827536a9d5d1f3701082c1ddd08b04bf1d8ef86564ae775e1ec426471bcf0bbacbc7b34b42e1de4c7b55387130ab58e80f756c46bbb3ba52a195f2c28c9458b9a0decaffb05764ae6eb000ae38e9ccd0ca8f013761ae5d1c566580a070643bf81c45e98de6744f7c9089d52105793296e084925c1768e599915571d077cc7cd8ee80516934e8a0e2357d6b9010b7c3abb7413c5d73b11045e627281ce88fbf6be71e5c1566b7cf383dce880a30676ac0e240724ede789d79fc528d33d6d2b2f218d2fd296768bc8b177d4c29ec5010c570aefa82dfe6a761af9913d17d2df21cf8cecbdbbf1976e7991ed49bbabf0045939f415461ca30336b8b6b491e3898d57c11dc85e0e593d7a9595a6822e35ee010dbd603916958760de8aaf1de08e286e410d11c4e862533e161d6f4ab4fb90d4b43cf73ffb8104a98f6efd711ab07e439c5bb190be2f44396edae72fc02755f88b010f4e98a89a5e17fea40ea3fe6ba71c04bb80eb654c963ada9e7e3382179254680d3c7714c6482bfbf6ad489f459222e522de1b7d61a92cae696465c4cd546f66da0010355b9b47d707f2210a5935e4173fa1750aeb2016110628e2c60beed1d23c36ee7f22d3ab5fece6777cc4af1519a02b6383d345253a00c2350d7f48d909ad33790111cb52308811447d12df4a4942b816cff56dc990ce2eb82941e6206d6f48b1192614dab3e4c6090a4416a366b59742326b537ec1a626c221f580fbb899789574580168ebe16f00000000001ae101faedac5851e32b9b23b5f9411a8c2bac4aae3ed4dd7b811dd1a72ea4aa710000000009bfde80014155575600000000000ecd7f7c000027103c68e37f69becad1303b28e36f17137a14b2db2701005500ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace000000606cf41069000000000f6277f4fffffff80000000068ebe16f0000000068ebe16e0000005e3c7004a0000000000c973afa0d94fdb85081e788ff228e5e887fd4c89e4ad364397bff515628c8134dca108fdfcfee002ddbbf6724298e7f8349c836a48678ff8c6820a652902a4e9a67995771d8b40525a5d27dec4f52d4ec079e9fb4ff4e4e380b5c7f9ae2a0c042d496d74ae445c3819a2c69b1df802b7c68f9bc80175a9b6027b36fe53f14458a8ce99bfa5b2502570d7d707c1f0722e9213bbb7bd53be15237def0164c3a07fae06e8a95d8584eb2ac3608cf673d11c1e4b4e974902fbc029e2b49a73799bfa5638c67c7bc706909cd72602072f681f4a729f3fd52325cdcb13b647521260ab3f7ad7818eca874698354897a0d6ec6429d2543e9fa51da7b8e73265549fb729372af8f9abb2b15c3" \
-      --value 0 \
-      --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
-      --rpc-url http://localhost:8545
+        "exampleMethod(bytes[])" \
+        "[$PRICE_UPDATE_HEX]" \
+        --value 10 \
+        --account burner \
+        --rpc-url $INFURA_UNICHAIN_MAINNET_RPC
 
 hit-hermes:
-    curl -s 'https://hermes.pyth.network/v2/updates/price/latest?ids[]=0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' \
-        -H 'accept: application/json' | jq .binary.data[]
+    curl -s 'https://hermes.pyth.network/v2/updates/price/latest?ids[]=0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' -H 'accept: application/json' | jq .binary.data[]
+
+fetch-price-update:
+    set -euo pipefail
+
+    # Fetch price update
+    raw=$(curl -s 'https://hermes.pyth.network/v2/updates/price/latest?ids[]=0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' \
+           -H 'accept: application/json')
+
+    # Convert to 0x-prefixed JSON array
+    newdata=$(echo "$raw" | jq -c '[.binary.data[] | if startswith("0x") then . else "0x"+. end]')
