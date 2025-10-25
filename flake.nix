@@ -11,8 +11,9 @@
     {
       devShells.${system}.default = pkgs.mkShell {
         buildInputs = [
-          pkgs.python310
-          pkgs.python310Packages.requests
+          pkgs.python311
+          pkgs.python311Packages.requests
+          pkgs.python311Packages.web3
         ];
         shellHook = ''
           echo "Python $(python --version) with requests ready!"

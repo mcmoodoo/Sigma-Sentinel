@@ -5,8 +5,14 @@ import "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
 import "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
 
 contract Sentinel {
-    IPyth pyth;
-    PythStructs.Price price;
+    IPyth public pyth;
+    PythStructs.Price public price;
+
+    int64 public mean;
+
+    bytes32 public constant PRICE_FEED_ID =
+        0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace; // ETH/USD
+    uint256 public constant STALENESS_THRESHOLD_IN_SECONDS = 60;
 
     /**
      * @param pythContract The address of the Pyth contract
@@ -18,24 +24,60 @@ contract Sentinel {
     }
 
     /**
-     * This method is an example of how to interact with the Pyth contract.
-     * Fetch the priceUpdate from Hermes and pass it to the Pyth contract to update the prices.
-     * Add the priceUpdate argument to any method on your contract that needs to read the Pyth price.
-     * See https://docs.pyth.network/price-feeds/fetch-price-updates for more information on how to fetch the priceUpdate.
- 
+     * refresh the price feed
      * @param priceUpdate The encoded data to update the contract with the latest price
      */
-    function exampleMethod(bytes[] calldata priceUpdate, uint256 stalenessThresholdInSeconds) public payable {
+    function refreshPriceFeed(bytes[] calldata priceUpdate) public payable {
         // Submit a priceUpdate to the Pyth contract to update the on-chain price.
         // Updating the price requires paying the fee returned by getUpdateFee.
         // WARNING: These lines are required to ensure the getPriceNoOlderThan call below succeeds. If you remove them, transactions may fail with "0x19abf40e" error.
         uint fee = pyth.getUpdateFee(priceUpdate);
         pyth.updatePriceFeeds{value: fee}(priceUpdate);
+    }
 
-        // Read the current price from a price feed if it is less than 60 seconds old.
-        // Each price feed (e.g., ETH/USD) is identified by a price feed ID.
-        // The complete list of feed IDs is available at https://docs.pyth.network/price-feeds/price-feeds
-        bytes32 priceFeedId = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace; // ETH/USD
-        price = pyth.getPriceNoOlderThan(priceFeedId, stalenessThresholdInSeconds);
+    function refreshPrice() public {
+        price = pyth.getPriceNoOlderThan(
+            PRICE_FEED_ID,
+            STALENESS_THRESHOLD_IN_SECONDS
+        );
+    }
+
+    function getPrice() public view returns (int64) {
+        return price.price;
+    }
+
+    function refreshAndFetchPrice(bytes[] calldata priceUpdate) public payable {
+        refreshPriceFeed(priceUpdate);
+        refreshPrice();
+    }
+
+    function historicalPrice(
+        bytes[] calldata priceUpdate,
+        uint64 minPublishTime,
+        uint64 maxPublishTime
+    ) external payable {
+        uint fee = pyth.getUpdateFee(priceUpdate);
+
+        bytes32[] memory priceFeeds = new bytes32[](1);
+        priceFeeds[0] = PRICE_FEED_ID; 
+
+        PythStructs.PriceFeed[] memory prices = pyth.parsePriceFeedUpdates{value: fee}(
+            priceUpdate,
+            priceFeeds,
+            minPublishTime,
+            maxPublishTime
+        );
+
+        require(prices.length > 0, "Empty price array from pyth");
+
+        int64 sum = 0;
+        // calculate the mean of prices
+        for (uint8 i=0; i<prices.length; i++) {
+            sum += prices[i].price.price;
+        }
+
+        mean = sum / int64(uint64(prices.length));
+
+        // uint256 settlementPrice = uint256(price.price);
     }
 }
