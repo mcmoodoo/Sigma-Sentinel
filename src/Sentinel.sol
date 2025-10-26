@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 import "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
 import "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
+import "@abdk-libraries-solidity/ABDKMath64x64.sol";
 
 contract Sentinel {
     IPyth public pyth;
@@ -14,7 +15,7 @@ contract Sentinel {
         0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace; // ETH/USD
     uint256 public constant STALENESS_THRESHOLD_IN_SECONDS = 60;
 
-    // Historical price storage
+    // Historical price data for volatility calculation
     struct HistoricalPrice {
         int64 price;
         uint64 publishTime;
@@ -24,6 +25,9 @@ contract Sentinel {
 
     HistoricalPrice[] public historicalPrices;
     uint256 public historicalPriceCount;
+
+    // Fixed-point precision for volatility calculations
+    int256 constant DECIMALS = 1e18;
 
     /**
      * @param pythContract The address of the Pyth contract
@@ -78,7 +82,7 @@ contract Sentinel {
 
         require(prices.length > 0, "Empty price array from pyth");
 
-        // Store the historical price data
+        // Store the historical price data for volatility calculation
         for (uint256 i = 0; i < prices.length; i++) {
             historicalPrices.push(HistoricalPrice({
                 price: prices[i].price.price,
@@ -94,30 +98,84 @@ contract Sentinel {
     }
 
     /**
-     * @dev Get a specific historical price by index
-     * @param index The index of the historical price
-     * @return priceValue The price value
-     * @return publishTime The publish time
-     * @return confidence The confidence value
-     * @return expo The exponent
+     * @dev Compute log return between two prices using fixed-point arithmetic
+     * @param priceCurrent Current price
+     * @param pricePrev Previous price
+     * @return log return in fixed-point (1e18)
      */
-    function getHistoricalPrice(uint256 index) external view returns (
-        int64 priceValue,
-        uint64 publishTime,
-        uint64 confidence,
-        int32 expo
-    ) {
-        require(index < historicalPriceCount, "Index out of bounds");
-        HistoricalPrice memory hp = historicalPrices[index];
-        return (hp.price, hp.publishTime, hp.confidence, hp.expo);
+    function logReturn(int64 priceCurrent, int64 pricePrev) internal pure returns (int256) {
+        require(pricePrev > 0 && priceCurrent > 0, "Price must be positive");
+        
+        // Scale to 1e18 fixed point
+        int256 ratio = (int256(priceCurrent) * DECIMALS) / int256(pricePrev);
+        
+        // Convert to ABDKMath64x64 format (64.64 fixed point)
+        int128 fixedRatio = ABDKMath64x64.fromInt(ratio / 1e18);
+        int128 logFixed = ABDKMath64x64.ln(fixedRatio);
+        
+        // Convert back to 1e18 fixed-point
+        return int256(logFixed) * 1e18 / 0x10000000000000000;
     }
 
     /**
-     * @dev Get all historical prices
-     * @return prices Array of historical price data
+     * @dev Calculate historical volatility from stored price data
+     * @return sigmaPerSecond Volatility per second in fixed-point (1e18)
      */
-    function getAllHistoricalPrices() external view returns (HistoricalPrice[] memory prices) {
-        return historicalPrices;
+    function historicalVolatility() external view returns (int256 sigmaPerSecond) {
+        uint n = historicalPrices.length;
+        require(n > 1, "Need at least 2 prices");
+
+        int256[] memory returnsArr = new int256[](n - 1);
+        int256 sum = 0;
+
+        // Compute log returns
+        for (uint i = 1; i < n; i++) {
+            int256 r = logReturn(historicalPrices[i].price, historicalPrices[i - 1].price);
+            returnsArr[i - 1] = r;
+            sum += r;
+        }
+
+        // Compute mean
+        int256 meanReturn = sum / int256(n - 1);
+
+        // Compute sample variance
+        int256 variance = 0;
+        for (uint i = 0; i < n - 1; i++) {
+            int256 diff = returnsArr[i] - meanReturn;
+            variance += diff * diff / DECIMALS; // Keep fixed-point scaling
+        }
+        variance = variance / int256(n - 2); // Sample variance (n-1)
+
+        // Standard deviation = sqrt(variance)
+        sigmaPerSecond = sqrt(variance);
+    }
+
+    /**
+     * @dev Babylonian method for sqrt in fixed-point
+     * @param x Value to take square root of
+     * @return y Square root in fixed-point
+     */
+    function sqrt(int256 x) internal pure returns (int256 y) {
+        require(x >= 0, "sqrt of negative");
+        if (x == 0) return 0;
+        int256 z = (x + 1) / 2;
+        y = x;
+        while (z < y) {
+            y = z;
+            z = (x / z + z) / 2;
+        }
+    }
+
+    /**
+     * @dev Get annualized volatility (multiply by sqrt(seconds per year))
+     * @return Annualized volatility in fixed-point (1e18)
+     */
+    function getAnnualizedVolatility() external view returns (int256) {
+        int256 sigmaPerSecond = this.historicalVolatility();
+        // Approximate seconds per year: 365.25 * 24 * 3600 = 31,557,600
+        int256 secondsPerYear = 31557600;
+        int256 sqrtSecondsPerYear = sqrt(secondsPerYear * DECIMALS);
+        return (sigmaPerSecond * sqrtSecondsPerYear) / DECIMALS;
     }
 
     /**
@@ -129,23 +187,10 @@ contract Sentinel {
     }
 
     /**
-     * @dev Get historical prices in a range
-     * @param startIndex Starting index (inclusive)
-     * @param endIndex Ending index (exclusive)
-     * @return prices Array of historical price data in the specified range
+     * @dev Get all historical prices (for debugging/verification)
+     * @return prices Array of historical price data
      */
-    function getHistoricalPricesRange(uint256 startIndex, uint256 endIndex) external view returns (HistoricalPrice[] memory prices) {
-        require(startIndex < historicalPriceCount, "Start index out of bounds");
-        require(endIndex <= historicalPriceCount, "End index out of bounds");
-        require(startIndex < endIndex, "Invalid range");
-
-        uint256 length = endIndex - startIndex;
-        HistoricalPrice[] memory result = new HistoricalPrice[](length);
-        
-        for (uint256 i = 0; i < length; i++) {
-            result[i] = historicalPrices[startIndex + i];
-        }
-        
-        return result;
+    function getAllHistoricalPrices() external view returns (HistoricalPrice[] memory prices) {
+        return historicalPrices;
     }
 }

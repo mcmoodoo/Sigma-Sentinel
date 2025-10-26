@@ -29,6 +29,12 @@ get-historical-price-count addr:
 get-all-historical-prices addr:
     cast call {{addr}} "getAllHistoricalPrices()((int64,uint64,uint64,int32)[])" --rpc-url $INFURA_UNICHAIN_MAINNET_RPC
 
+get-volatility addr:
+    cast call {{addr}} "historicalVolatility()(int256)" --rpc-url $INFURA_UNICHAIN_MAINNET_RPC
+
+get-annualized-volatility addr:
+    cast call {{addr}} "getAnnualizedVolatility()(int256)" --rpc-url $INFURA_UNICHAIN_MAINNET_RPC
+
 historical:
     python fetch-historical-price-updates.py
     forge script script/fetchHistoricalPrices.s.sol --rpc-url $INFURA_UNICHAIN_MAINNET_RPC --broadcast --account burner
