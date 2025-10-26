@@ -23,6 +23,12 @@ get-price addr:
 get-mean addr:
     cast call {{addr}} "mean()(int64)" --rpc-url $INFURA_UNICHAIN_MAINNET_RPC 
 
+get-historical-price-count addr:
+    cast call {{addr}} "getHistoricalPriceCount()(uint256)" --rpc-url $INFURA_UNICHAIN_MAINNET_RPC
+
+get-all-historical-prices addr:
+    cast call {{addr}} "getAllHistoricalPrices()((int64,uint64,uint64,int32)[])" --rpc-url $INFURA_UNICHAIN_MAINNET_RPC
+
 historical:
     python fetch-historical-price-updates.py
     forge script script/fetchHistoricalPrices.s.sol --rpc-url $INFURA_UNICHAIN_MAINNET_RPC --broadcast --account burner

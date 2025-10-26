@@ -14,6 +14,17 @@ contract Sentinel {
         0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace; // ETH/USD
     uint256 public constant STALENESS_THRESHOLD_IN_SECONDS = 60;
 
+    // Historical price storage
+    struct HistoricalPrice {
+        int64 price;
+        uint64 publishTime;
+        uint64 confidence;
+        int32 expo;
+    }
+
+    HistoricalPrice[] public historicalPrices;
+    uint256 public historicalPriceCount;
+
     /**
      * @param pythContract The address of the Pyth contract
      */
@@ -67,6 +78,74 @@ contract Sentinel {
 
         require(prices.length > 0, "Empty price array from pyth");
 
+        // Store the historical price data
+        for (uint256 i = 0; i < prices.length; i++) {
+            historicalPrices.push(HistoricalPrice({
+                price: prices[i].price.price,
+                publishTime: uint64(prices[i].price.publishTime),
+                confidence: prices[i].price.conf,
+                expo: prices[i].price.expo
+            }));
+            historicalPriceCount++;
+        }
+
+        // Update mean with the latest price
         mean = prices[0].price.price;
+    }
+
+    /**
+     * @dev Get a specific historical price by index
+     * @param index The index of the historical price
+     * @return priceValue The price value
+     * @return publishTime The publish time
+     * @return confidence The confidence value
+     * @return expo The exponent
+     */
+    function getHistoricalPrice(uint256 index) external view returns (
+        int64 priceValue,
+        uint64 publishTime,
+        uint64 confidence,
+        int32 expo
+    ) {
+        require(index < historicalPriceCount, "Index out of bounds");
+        HistoricalPrice memory hp = historicalPrices[index];
+        return (hp.price, hp.publishTime, hp.confidence, hp.expo);
+    }
+
+    /**
+     * @dev Get all historical prices
+     * @return prices Array of historical price data
+     */
+    function getAllHistoricalPrices() external view returns (HistoricalPrice[] memory prices) {
+        return historicalPrices;
+    }
+
+    /**
+     * @dev Get the count of historical prices
+     * @return count Number of stored historical prices
+     */
+    function getHistoricalPriceCount() external view returns (uint256 count) {
+        return historicalPriceCount;
+    }
+
+    /**
+     * @dev Get historical prices in a range
+     * @param startIndex Starting index (inclusive)
+     * @param endIndex Ending index (exclusive)
+     * @return prices Array of historical price data in the specified range
+     */
+    function getHistoricalPricesRange(uint256 startIndex, uint256 endIndex) external view returns (HistoricalPrice[] memory prices) {
+        require(startIndex < historicalPriceCount, "Start index out of bounds");
+        require(endIndex <= historicalPriceCount, "End index out of bounds");
+        require(startIndex < endIndex, "Invalid range");
+
+        uint256 length = endIndex - startIndex;
+        HistoricalPrice[] memory result = new HistoricalPrice[](length);
+        
+        for (uint256 i = 0; i < length; i++) {
+            result[i] = historicalPrices[startIndex + i];
+        }
+        
+        return result;
     }
 }
