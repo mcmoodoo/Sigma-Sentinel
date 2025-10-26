@@ -59,25 +59,14 @@ contract Sentinel {
         uint fee = pyth.getUpdateFee(priceUpdate);
 
         bytes32[] memory priceFeeds = new bytes32[](1);
-        priceFeeds[0] = PRICE_FEED_ID; 
+        priceFeeds[0] = PRICE_FEED_ID;
 
-        PythStructs.PriceFeed[] memory prices = pyth.parsePriceFeedUpdates{value: fee}(
-            priceUpdate,
-            priceFeeds,
-            minPublishTime,
-            maxPublishTime
-        );
+        PythStructs.PriceFeed[] memory prices = pyth.parsePriceFeedUpdates{
+            value: fee
+        }(priceUpdate, priceFeeds, minPublishTime, maxPublishTime);
 
         require(prices.length > 0, "Empty price array from pyth");
 
-        int64 sum = 0;
-        // calculate the mean of prices
-        for (uint8 i=0; i<prices.length; i++) {
-            sum += prices[i].price.price;
-        }
-
-        mean = sum / int64(uint64(prices.length));
-
-        // uint256 settlementPrice = uint256(price.price);
+        mean = prices[0].price.price;
     }
 }
