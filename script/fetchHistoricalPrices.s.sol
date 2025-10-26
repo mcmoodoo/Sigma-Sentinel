@@ -41,23 +41,45 @@ contract SettleWithHistoricalPriceScript is Script {
         // Read price update data from JSON file
         string memory historicalData = vm.readFile("./cache/historical_price_update.json");
         
-        // Parse the first hex value from the JSON array
-        string memory hexData = vm.parseJsonString(historicalData, "$[0].binary.data[0]");
-        
-        // Convert to bytes[] array
-        bytes[] memory priceUpdate = new bytes[](1);
-        priceUpdate[0] = vm.parseBytes(hexData);
-
+        // Set up time bounds
         uint64 minPublishTime = uint64(block.timestamp - 30000);
         uint64 maxPublishTime = uint64(block.timestamp + 30000);
-
-        // call historicalPrice
+        
+        // Start broadcasting for all transactions
         vm.startBroadcast();
-        ISettlement(sentinelAddr).historicalPrice{value: 1}(
-            priceUpdate,
-            minPublishTime,
-            maxPublishTime
-        );
+        
+        // Process each entry - try to parse until we hit an error
+        uint256 entryCount = 0;
+        bool hasMoreEntries = true;
+        
+        while (hasMoreEntries) {
+            try vm.parseJsonString(
+                historicalData, 
+                string.concat("$[", vm.toString(entryCount), "].binary.data[0]")
+            ) returns (string memory hexData) {
+                console2.log("Processing entry", entryCount);
+                
+                // Convert to bytes[] array
+                bytes[] memory priceUpdate = new bytes[](1);
+                priceUpdate[0] = vm.parseBytes(hexData);
+                
+                console2.log("Calling historicalPrice for entry", entryCount);
+                
+                // Call historicalPrice for this entry
+                ISettlement(sentinelAddr).historicalPrice{value: 1}(
+                    priceUpdate,
+                    minPublishTime,
+                    maxPublishTime
+                );
+                
+                entryCount++;
+            } catch {
+                hasMoreEntries = false;
+            }
+        }
+        
+        console2.log("Processed", entryCount, "price update entries");
+        
         vm.stopBroadcast();
     }
 
